@@ -125,6 +125,21 @@ async fn main() -> Result<()> {
         .with_writer(move || log_file.try_clone().unwrap())
         .init();
 
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!(panic = %info, "Koharu Native Messaging Host panicked");
+        previous_hook(info);
+    }));
+
+    if let Err(e) = run().await {
+        tracing::error!(error = ?e, "Koharu Native Messaging Host failed");
+        return Err(e);
+    }
+
+    Ok(())
+}
+
+async fn run() -> Result<()> {
     tracing::info!("Starting Koharu Chrome Native Messaging Host...");
 
     koharu_ml::init()
