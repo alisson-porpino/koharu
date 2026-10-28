@@ -1,7 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use koharu_scene::{Authored, LanguageTag, Origin, SourceText, Translation};
-use koharu_translator::{TranslationRequest, Translator};
+use koharu_translator::{Language, TranslationRequest, Translator};
+use std::sync::RwLock;
 
 use crate::TranslationConfig;
 
@@ -10,24 +11,35 @@ use super::{StageInput, StageProcessor, finish, generation};
 const PRODUCER: &str = "dev.koharu.pipeline.translation";
 
 pub(super) struct Processor {
-    config: TranslationConfig,
+    config: RwLock<TranslationConfig>,
     translator: Translator,
 }
 
 impl Processor {
     pub(super) fn new(config: TranslationConfig, translator: Translator) -> Self {
-        Self { config, translator }
+        Self {
+            config: RwLock::new(config),
+            translator,
+        }
+    }
+
+    pub(crate) fn set_target_language(&self, language: Language) {
+        if let Ok(mut config) = self.config.write() {
+            config.target_language = language;
+        }
     }
 }
 
 #[async_trait]
 impl StageProcessor for Processor {
     fn model(&self) -> &'static str {
-        Translator::model(&self.config.model)
+        let model = self.config.read().map(|c| c.model.clone()).unwrap_or_default();
+        Translator::model(&model)
     }
 
     fn is_loaded(&self) -> bool {
-        self.translator.loaded(&self.config.model)
+        let model = self.config.read().map(|c| c.model.clone()).unwrap_or_default();
+        self.translator.loaded(&model)
     }
 
     fn unload(&self) -> bool {
@@ -35,10 +47,17 @@ impl StageProcessor for Processor {
     }
 
     async fn load(&self) -> Result<()> {
-        self.translator.load_model(&self.config.model).await
+        let model = self.config.read().map(|c| c.model.clone()).unwrap_or_default();
+        self.translator.load_model(&model).await
     }
 
     async fn process(&self, input: StageInput) -> Result<koharu_scene::Patch> {
+        let config = self
+            .config
+            .read()
+            .map(|c| c.clone())
+            .map_err(|e| anyhow::anyhow!("failed to read translation config lock: {e}"))?;
+
         let mut targets = Vec::new();
         if let Some(group) = input.scene.page(input.page)?.text_group()? {
             for layer in group.text_layers()? {
@@ -56,21 +75,21 @@ impl StageProcessor for Processor {
         }
         let mut request = TranslationRequest::new(
             targets.iter().map(|(_, source)| source.clone()),
-            self.config.target_language,
+            config.target_language,
         );
-        if let Some(instructions) = self.config.instructions.as_deref() {
+        if let Some(instructions) = config.instructions.as_deref() {
             request = request.with_instructions(instructions);
         }
-        if Translator::supports_vision(&self.config.model, &self.config.generation)
+        if Translator::supports_vision(&config.model, &config.generation)
             && let Some(image) = input.images.get(&input.scene, input.page, "source").await?
         {
             request = request.with_image(image);
         }
         let (provider, translated) = self
             .translator
-            .translate(&self.config.model, self.config.generation, request)
+            .translate(&config.model, config.generation, request)
             .await?;
-        let language = LanguageTag::new(self.config.target_language.tag())?;
+        let language = LanguageTag::new(config.target_language.tag())?;
         let generated = generation(PRODUCER, provider)?;
         let mut edit = input.scene.edit_as(generated.clone());
         for (entity, _) in &targets {

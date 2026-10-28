@@ -94,6 +94,12 @@ impl Pipeline {
         any
     }
 
+    /// Dynamically sets the target language for translation on the active pipeline runner.
+    pub fn set_target_language(&self, language: koharu_translator::Language) {
+        let runner = self.current.load();
+        runner.set_target_language(language);
+    }
+
     #[tracing::instrument(skip_all)]
     pub async fn execute(
         &self,

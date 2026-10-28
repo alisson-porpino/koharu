@@ -125,6 +125,10 @@ impl Stages {
     pub(crate) fn unload(&self, stage: Stage) -> bool {
         self.processor(stage).unload()
     }
+
+    pub(crate) fn set_target_language(&self, language: koharu_translator::Language) {
+        self.translation.set_target_language(language);
+    }
 }
 
 fn generation(producer: &str, model: &str) -> Result<Generation> {
