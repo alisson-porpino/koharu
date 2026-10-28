@@ -31,7 +31,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::watch;
 
-const CONFIG_DIRECTORY: &str = ".koharu";
+const CONFIG_DIRECTORY: &str = ".manga-web-translator";
 const CONFIG_FILE: &str = "config.toml";
 
 static MANAGER: OnceLock<Result<Arc<Manager>, String>> = OnceLock::new();
@@ -370,10 +370,20 @@ impl Manager {
     }
 }
 
-/// Returns the shared Koharu configuration path: `~/.koharu/config.toml`.
+/// Returns the shared configuration path: `~/.manga-web-translator/config.toml`.
 pub fn path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("could not determine the home directory")?;
-    Ok(home.join(CONFIG_DIRECTORY).join(CONFIG_FILE))
+    let new_path = home.join(CONFIG_DIRECTORY).join(CONFIG_FILE);
+    let legacy_path = home.join(".koharu").join(CONFIG_FILE);
+
+    // If legacy ~/.koharu/config.toml exists and new doesn't, copy it
+    if legacy_path.exists() && !new_path.exists() {
+        if let Some(parent) = new_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::copy(&legacy_path, &new_path);
+    }
+    Ok(new_path)
 }
 
 /// Load or retrieve a live, process-wide top-level configuration section.

@@ -49,10 +49,29 @@ impl Store {
     #[must_use]
     pub fn root() -> &'static Path {
         ROOT.get_or_init(|| {
-            dirs::cache_dir()
+            let base = dirs::data_local_dir()
+                .or_else(dirs::cache_dir)
+                .unwrap_or_else(std::env::temp_dir);
+            let app_path = base.join("manga-web-translator").join("models");
+            let legacy_path = dirs::cache_dir()
                 .unwrap_or_else(std::env::temp_dir)
                 .join("koharu")
-                .join("packages")
+                .join("packages");
+
+            // If legacy koharu/packages exists and new manga-web-translator/models doesn't,
+            // migrate/rename it seamlessly so existing downloaded models are preserved.
+            if legacy_path.exists() && !app_path.exists() {
+                if let Some(parent) = app_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::rename(&legacy_path, &app_path);
+            }
+
+            if app_path.exists() {
+                app_path
+            } else {
+                base.join("manga-web-translator").join("models")
+            }
         })
     }
 
