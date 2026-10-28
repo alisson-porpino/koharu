@@ -39,13 +39,16 @@ impl Pipeline {
             StageRunner::new(&value, translator.clone(), &device, resources.clone())?
         };
         let current = Arc::new(ArcSwap::from_pointee(runner));
-        let watched = current.clone();
+        let watched = Arc::downgrade(&current);
         let watched_resources = resources.clone();
         let _watcher = tokio::runtime::Handle::try_current()
             .context("pipeline requires a Tokio runtime")?
             .spawn(async move {
                 let mut changes = config.subscribe();
                 while changes.changed().await.is_ok() {
+                    let Some(watched) = watched.upgrade() else {
+                        break;
+                    };
                     let runner = config.read().and_then(|value| {
                         StageRunner::new(
                             &value,
@@ -70,6 +73,25 @@ impl Pipeline {
     pub fn subscribe_resources(&self) -> tokio::sync::watch::Receiver<ResourceSnapshot> {
         self.resources.start();
         self.resources.subscribe()
+    }
+
+    /// Returns true if any of the pipeline ML models are currently resident in memory.
+    pub fn is_loaded(&self) -> bool {
+        let runner = self.current.load();
+        crate::Stage::ALL.iter().any(|&stage| runner.stages.is_loaded(stage))
+    }
+
+    /// Explicitly unloads all stage models (detection, OCR, translation LLM, inpainting)
+    /// from memory/VRAM while keeping the pipeline configuration intact.
+    pub fn unload(&self) -> bool {
+        let runner = self.current.load();
+        let mut any = false;
+        for stage in crate::Stage::ALL {
+            if runner.stages.unload(stage) {
+                any = true;
+            }
+        }
+        any
     }
 
     #[tracing::instrument(skip_all)]

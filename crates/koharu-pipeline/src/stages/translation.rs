@@ -26,6 +26,10 @@ impl StageProcessor for Processor {
         Translator::model(&self.config.model)
     }
 
+    fn is_loaded(&self) -> bool {
+        self.translator.loaded(&self.config.model)
+    }
+
     fn unload(&self) -> bool {
         self.translator.unload()
     }

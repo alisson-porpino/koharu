@@ -43,6 +43,10 @@ impl StageProcessor for Processor {
         }
     }
 
+    fn is_loaded(&self) -> bool {
+        self.model.is_loaded()
+    }
+
     fn unload(&self) -> bool {
         self.model.unload()
     }

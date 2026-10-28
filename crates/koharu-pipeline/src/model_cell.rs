@@ -29,6 +29,13 @@ impl<M> ModelCell<M> {
         self.model.lock().await
     }
 
+    pub(crate) fn is_loaded(&self) -> bool {
+        self.model
+            .try_lock()
+            .map(|model| model.is_some())
+            .unwrap_or(false)
+    }
+
     pub(crate) fn unload(&self) -> bool {
         self.model
             .try_lock()

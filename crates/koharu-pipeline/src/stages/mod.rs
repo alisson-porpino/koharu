@@ -64,6 +64,9 @@ trait StageProcessor: Send + Sync {
     fn skip(&self, _input: &StageInput) -> Result<bool> {
         Ok(false)
     }
+    fn is_loaded(&self) -> bool {
+        false
+    }
     fn unload(&self) -> bool;
     async fn load(&self) -> Result<()>;
     async fn process(&self, input: StageInput) -> Result<Patch>;
@@ -105,6 +108,10 @@ impl Stages {
 
     pub(crate) fn skip(&self, stage: Stage, input: &StageInput) -> Result<bool> {
         self.processor(stage).skip(input)
+    }
+
+    pub(crate) fn is_loaded(&self, stage: Stage) -> bool {
+        self.processor(stage).is_loaded()
     }
 
     pub(crate) async fn load(&self, stage: Stage) -> Result<()> {
